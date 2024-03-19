@@ -2,7 +2,6 @@ const fs = require("node:fs/promises");
 
 class MulticashDateParsingError extends Error {
   /**
-   * 
    * @param {string} str the invalid string
    * @returns a multicash date parsing error containing the appropriate message
    */
@@ -63,6 +62,13 @@ class MulticashDate extends ShortISO8601Date {
 
     return new MulticashDate(year, month -1, day);
   }
+
+  get month() {
+    return [
+      this.toLocaleString("default", { month: "long" }),
+      this.getFullYear(),
+    ].join(" ");
+  }
 }
 
 class Account {
@@ -85,15 +91,6 @@ class Account {
    */
   constructor(number) {
     this.number = number;
-  }
-
-  /**
-   * @returns {string} a Ledger-friendly account name
-   * @example
-   * new Account(200).toString(); // => "BANK ACCOUNT #200"
-   */
-  toString() {
-    return `BANK ACCOUNT #${this.number}`;
   }
 }
 
@@ -134,7 +131,12 @@ class Amount {
    * new Amount(40.50).toString() === "$40.50"; // => true
    */
   toString() {
-    return `$${Math.abs(this.amount)}`;
+    const sign = this.amount < 0 ? "-" : "";
+    const extraZeroes = Number.isInteger(this.amount) ? ".00" : "0";
+    const suffixed = String(Math.abs(this.amount)).concat(extraZeroes)
+    const [intPart, floatPart] = suffixed.split(".");
+
+    return `${sign}$${intPart}.${floatPart.substring(0, 2)}`;
   }
 }
 
@@ -161,19 +163,10 @@ class Transaction {
   valueOf() {
     return this.amount.valueOf();
   }
-
-  /** Prints in the Ledger format */
-  toString() {
-    const debit = this.amount < 0;
-
-    return `${this.date} ${this.text}
-      ${this.serial}${debit ? ` ${this.amount}` : ""}
-      ${this.account}${debit ? "" : ` ${this.amount}`}`
-  }
 }
 
 class TransactionParser {
-  /** @private @constant */
+  /** @private @constant https://bankrec.westpac.com.au/docs/statements/sap-multicash/ */
   static cols = {
     /** `#1` Bank Key	Populated with the BSB of the current account. */
     account: 1,
@@ -286,17 +279,278 @@ class TransactionParser {
   }
 }
 
+class Week {
+  /** @private @constant */
+  static wholeDay = new Date(0).setUTCDate(2);
+
+  /**
+   * @param {Date} date
+   */
+  constructor(date) {
+    const offset = date.getDay() % 7;
+    const delta = Week.wholeDay * offset;
+    const weekStart = date - delta;
+    const weekEnd = weekStart + (Week.wholeDay * 7);
+
+    this.weekStart = new ShortISO8601Date(weekStart);
+    this.weekEnd = new ShortISO8601Date(weekEnd);
+  }
+
+  toString() {
+    return [this.weekStart, this.weekEnd].join(":");
+  }
+}
+
+class FallbackMap extends Map {
+  getWithFallback(key) {
+    let current = this.get(key);
+
+    if (!current) {
+      current = this.getFallback();
+      this.set(key, current);
+    }
+
+    return current;
+  }
+
+  /**
+   * @abstract
+   */
+  getFallback() {
+    return null;
+  }
+}
+
+class TransactionList extends Array {
+  sum = 0;
+
+  /**
+   * @param {Transaction} transaction 
+   */
+  append(transaction) {
+    this.sum += transaction;
+    this.push(transaction);
+  }
+}
+
+class TransactionGroup extends FallbackMap {
+  /** @type {Record<string, (transaction: Transaction) => any>} */
+  static groups = {
+    month: transaction => transaction.date.month,
+    week: transaction => new Week(transaction.date),
+    day: transaction => transaction.date,
+    serial: transaction => transaction.serial
+  };
+
+  /**
+   * @param {any | string[]} arg
+   * @returns {string[] | null}
+   */
+  static parseGroups(arg) {
+    if (Array.isArray(arg) && !arg.some(a => !TransactionGroup.groups[a])) {
+      return arg;
+    }
+
+    return null
+  }
+  
+  /**
+   * Browsers don't allow super() in extended native classes even though Node.js does
+   * @param {string[]} groupings 
+   */
+  static of(groupings) {
+    const transactionGroup = new TransactionGroup();
+    transactionGroup.groupings = groupings;
+
+    return transactionGroup;
+  }
+
+  /** @type {string[]} */
+  groupings = [];
+  sum = 0;
+
+  /**
+   * 
+   * @param {Transaction} transaction 
+   */
+  append(transaction) {
+    this.sum += transaction;
+    const [grouping] = this.groupings;
+    const groupBy = TransactionGroup.groups[grouping];
+    const group = String(groupBy(transaction));
+    const current = this.getWithFallback(group);
+
+    current.append(transaction);
+  }
+
+  getFallback() {
+    if (this.groupings.length > 1) {
+      return TransactionGroup.of(this.groupings.slice(1));
+    }
+
+    return new TransactionList();
+  }
+}
+
+class Arguments {
+  params = new Map();
+  paths = [];
+
+  static param = /^--(?<name>\w+)=(?<value>[\w,]+)/
+
+  /**
+   * @param {string} str param value
+   * @returns {{ name: string; value: string; } | null}
+   */
+  static matchParam(str) {
+    const match = Arguments.param.exec(str);
+
+    if (match === null || !match.groups) {
+      return null;
+    }
+
+    return match.groups;
+  }
+
+  /**
+   * 
+   * @param {string[]} raw `process.argv` stripped of node path
+   */
+  constructor(raw) {
+    for (const arg of raw) {
+      const param = Arguments.matchParam(arg);
+
+      if (!param) {
+        this.paths.push(arg);
+      } else {
+        const values = param.value.split(",");
+
+        this.params.set(param.name, values.length > 1 ? values : param.value)
+      }
+    }
+  }
+}
+
+/** Leaving the branching visualisation broken for now */
+class Tree {
+  static GAP = "  ";
+  static INIT_LEAF = "├──";
+  static LAST_LEAF = "└──";
+  static CHILD_BRANCH = "│";
+
+  /**
+   * @note assuming non-empty list
+   * @param {T[]} xs 
+   * @returns {T[]}
+   */
+  static init(xs) {
+    return xs.slice(0, -1);
+  }
+
+  /**
+   * @note assuming non-empty list
+   * @param {T[]} xs 
+   * @returns {T}
+   */
+  static last(xs) {
+    const [last] = xs.slice(-1);
+
+    return last;
+  }
+
+  /**
+   * @param {string} padding 
+   * @param {string} key 
+   * @param {{ sum: number }} children 
+   * @returns {string}
+   */
+  static renderMapNode(padding, key, children) {
+    return padding.concat(
+      `[${key}] `,
+      new Amount(children.sum),
+      "\n"
+    );
+  }
+
+  /**
+   * @param {string} padding 
+   * @param {Transaction} child 
+   * @returns {string}
+   */
+  static renderListNode(padding, child) {
+    return padding.concat(
+      child.amount < 0 ? " " : "  ",
+      child.amount,
+      "\n"
+    );
+  }
+
+  /**
+   * @param {number} lvl 
+   * @param {boolean} isLast 
+   * @returns {string}
+   */
+  static getPadding(lvl, isLast) {
+    const leaf = isLast ? Tree.LAST_LEAF : Tree.INIT_LEAF;
+    const branch = lvl > 0 ? Tree.CHILD_BRANCH.concat(Tree.GAP) : "";
+
+    return branch.repeat(lvl).concat(leaf)
+  }
+
+  /**
+   * @param {number} lvl 
+   * @param {TransactionGroup | TransactionList} nodes 
+   * @yields {string}
+   */
+  *[Symbol.iterator](lvl = 0, nodes = this.nodes) {
+    if (lvl === 0) {
+      yield `Total: ${new Amount(nodes.sum)}\n`;
+    }
+
+    if (nodes instanceof Map) {
+      const nodeList = Array.from(nodes);
+
+      for (const [key, children] of Tree.init(nodeList)) {
+        yield Tree.renderMapNode(Tree.getPadding(lvl, false), key, children);
+        yield* this[Symbol.iterator](lvl + 1, children);
+      }
+      
+      const [key, children] = Tree.last(nodeList);
+      yield Tree.renderMapNode(Tree.getPadding(lvl, true), key, children);
+      yield* this[Symbol.iterator](lvl + 1, children);
+    }
+
+    if (nodes instanceof Array && nodes.length > 1) {
+      const nodeList = nodes.sort((t1, t2) => t1.amount - t2.amount);
+
+      for (const child of Tree.init(nodeList)) {
+        yield Tree.renderListNode(Tree.getPadding(lvl, false), child);
+      }
+
+      yield Tree.renderListNode(Tree.getPadding(lvl, true), Tree.last(nodeList));
+    }
+  }
+
+  constructor(nodes) {
+    this.nodes = nodes;
+  }
+}
+
 /**
- * @param {string[]} paths paths to UMSATZ.TXT files
+ * @param {Arguments} args argument object containing paths to UMSATZ.TXT files and grouping settings
  */
-const main = async paths => {
+const main = async args => {
+  const { paths, params } = args;
+  const groupings = TransactionGroup.parseGroups(params.get("groupBy"));
+  const transactions = groupings ? TransactionGroup.of(groupings) : new TransactionList();
+
   if (paths.length) {
     for (const path of paths) {
       const fileHandle = await fs.open(path);
       const parser = new TransactionParser(fileHandle.readableWebStream());
 
       for await (const transaction of parser) {
-        process.stdout.write("\n\n" + transaction.toString())
+        transactions.append(transaction);
       }
 
       fileHandle.close();
@@ -306,10 +560,14 @@ const main = async paths => {
           process.stderr.write("\n" + error);
         }
       }
+
+      for (const node of new Tree(transactions)) {
+        process.stdout.write(node);
+      };
     }
   }
 }
 
 if (require.main === module) {
-  main(process.argv.slice(2));
+  main(new Arguments(process.argv.slice(2)));
 }
