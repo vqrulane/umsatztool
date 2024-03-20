@@ -431,12 +431,11 @@ class Arguments {
   }
 }
 
-/** Leaving the branching visualisation broken for now */
 class Tree {
-  static GAP = "  ";
   static INIT_LEAF = "├──";
   static LAST_LEAF = "└──";
-  static CHILD_BRANCH = "│";
+  static NEST_LEAF = "│  ";
+  static GAP = " ".repeat(Tree.LAST_LEAF.length);
 
   /**
    * @note assuming non-empty list
@@ -456,6 +455,25 @@ class Tree {
     const [last] = xs.slice(-1);
 
     return last;
+  }
+
+  /**
+   * @param {string} str 
+   * @param {string} oldChar 
+   * @param {string} newChar 
+   * @returns {string}
+   */
+  static replaceLast(str, oldChar, newChar) {
+    const idx = str.lastIndexOf(oldChar);
+
+    if (idx === -1) {
+      return str;
+    }
+
+    const head = str.substring(0, idx);
+    const tail = str.substring(idx + oldChar.length);
+  
+    return head.concat(newChar).concat(tail);
   }
 
   /**
@@ -490,11 +508,17 @@ class Tree {
    * @param {boolean} isLast 
    * @returns {string}
    */
-  static getPadding(lvl, isLast) {
-    const leaf = isLast ? Tree.LAST_LEAF : Tree.INIT_LEAF;
-    const branch = lvl > 0 ? Tree.CHILD_BRANCH.concat(Tree.GAP) : "";
+  static getPadding(prevPadding, isLast) {
+    const currentLeaf = isLast ? Tree.LAST_LEAF : Tree.INIT_LEAF;
 
-    return branch.repeat(lvl).concat(leaf)
+    if (!prevPadding) {
+      return currentLeaf;
+    }
+
+    const nested = Tree.replaceLast(prevPadding, Tree.INIT_LEAF, Tree.NEST_LEAF);
+    const lastSkipped = Tree.replaceLast(nested, Tree.LAST_LEAF, Tree.GAP);
+
+    return lastSkipped.concat(Tree.GAP, currentLeaf);
   }
 
   /**
@@ -502,32 +526,35 @@ class Tree {
    * @param {TransactionGroup | TransactionList} nodes 
    * @yields {string}
    */
-  *[Symbol.iterator](lvl = 0, nodes = this.nodes) {
-    if (lvl === 0) {
+  *[Symbol.iterator](prevPadding = "", nodes = this.nodes) {
+    if (!prevPadding) {
       yield `Total: ${new Amount(nodes.sum)}\n`;
     }
 
     if (nodes instanceof Map) {
       const nodeList = Array.from(nodes);
+      const initPadding = Tree.getPadding(prevPadding, false);
 
       for (const [key, children] of Tree.init(nodeList)) {
-        yield Tree.renderMapNode(Tree.getPadding(lvl, false), key, children);
-        yield* this[Symbol.iterator](lvl + 1, children);
+        yield Tree.renderMapNode(initPadding, key, children);
+        yield* this[Symbol.iterator](initPadding, children);
       }
       
       const [key, children] = Tree.last(nodeList);
-      yield Tree.renderMapNode(Tree.getPadding(lvl, true), key, children);
-      yield* this[Symbol.iterator](lvl + 1, children);
+      const lastPadding = Tree.getPadding(prevPadding, true);
+
+      yield Tree.renderMapNode(lastPadding, key, children);
+      yield* this[Symbol.iterator](lastPadding, children);
     }
 
     if (nodes instanceof Array && nodes.length > 1) {
       const nodeList = nodes.sort((t1, t2) => t1.amount - t2.amount);
 
       for (const child of Tree.init(nodeList)) {
-        yield Tree.renderListNode(Tree.getPadding(lvl, false), child);
+        yield Tree.renderListNode(Tree.getPadding(prevPadding, false), child);
       }
 
-      yield Tree.renderListNode(Tree.getPadding(lvl, true), Tree.last(nodeList));
+      yield Tree.renderListNode(Tree.getPadding(prevPadding, true), Tree.last(nodeList));
     }
   }
 
