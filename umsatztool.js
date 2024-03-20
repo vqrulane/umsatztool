@@ -588,11 +588,11 @@ const main = async args => {
           process.stderr.write("\n" + error);
         }
       }
-
-      for (const node of new Tree(transactions)) {
-        process.stdout.write(node);
-      };
     }
+
+    for (const node of new Tree(transactions)) {
+      process.stdout.write(node);
+    };
   }
 }
 
