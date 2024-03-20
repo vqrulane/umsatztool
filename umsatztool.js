@@ -343,12 +343,14 @@ class TransactionGroup extends FallbackMap {
   };
 
   /**
-   * @param {any | string[]} arg
+   * @param {string | string[]} arg
    * @returns {string[] | null}
    */
   static parseGroups(arg) {
-    if (Array.isArray(arg) && !arg.some(a => !TransactionGroup.groups[a])) {
-      return arg;
+    const xs = Array.isArray(arg) ? arg : [arg];
+
+    if (!xs.some(a => !TransactionGroup.groups[a])) {
+      return xs;
     }
 
     return null
@@ -370,7 +372,6 @@ class TransactionGroup extends FallbackMap {
   sum = 0;
 
   /**
-   * 
    * @param {Transaction} transaction 
    */
   append(transaction) {
