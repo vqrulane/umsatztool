@@ -532,7 +532,7 @@ class Tree {
     }
 
     if (nodes instanceof Map) {
-      const nodeList = Array.from(nodes);
+      const nodeList = Array.from(nodes).sort(([, m1], [, m2]) => m1.sum - m2.sum);
       const initPadding = Tree.getPadding(prevPadding, false);
 
       for (const [key, children] of Tree.init(nodeList)) {
