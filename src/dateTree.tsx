@@ -14,6 +14,13 @@ class DateTreeCol<T> extends Array<T> {
 }
 
 class SumMap extends FallbackMap<number> {
+  total = 0;
+
+  append(key: string, value: number) {
+    this.total += value;
+    this.set(key, this.getWithFallback(key) + value);
+  }
+
   // eslint-disable-next-line class-methods-use-this
   getFallback(): number {
     return 0;
@@ -29,7 +36,7 @@ class DateTreeRow<T> extends FallbackMap<DateTreeCol<T> | DateTreeRow<T>> {
 
     if (getLastGroup) {
       const group = getLastGroup(x);
-      this.value.set(group, this.value.getWithFallback(group) + Number(x));
+      this.value.append(group, Number(x));
     }
   }
 
@@ -71,9 +78,17 @@ const DateTreeContext = React.createContext<{
 
 type Children = [string | number, DateTreeRow<any>][];
 
+const extractTotal = (x: DateTreeCol<any> | DateTreeRow<any>) =>
+  typeof x.value === "number" ? x.value : x.value.total;
+
+const compareSums = (
+  x: DateTreeCol<any> | DateTreeRow<any>,
+  y: DateTreeCol<any> | DateTreeRow<any>
+) => extractTotal(x) - extractTotal(y);
+
 const getChildren = ([, node]: [string, DateTreeRow<any>]) => {
   if (node.groups.length > 1) {
-    const children = Array.from(node) as Children;
+    const children = Array.from(node).sort(([, x], [, y]) => compareSums(x, y)) as Children;
 
     if (children.length) {
       return children;
@@ -86,11 +101,12 @@ const getChildren = ([, node]: [string, DateTreeRow<any>]) => {
 const useChildren = (node: DateTreeRow<any>) =>
   useSWR<Children | null>(["tree::children", node], { fetcher: getChildren });
 
-const SkippedCols: React.FC<{ readonly groupIdx: number; readonly group?: string }> = ({
-  group,
-  groupIdx,
-}) => {
-  const { groupNames } = React.useContext(DateTreeContext);
+const SkippedCols: React.FC<{
+  readonly groupIdx: number;
+  readonly group?: string;
+  readonly node: DateTreeRow<any>;
+}> = ({ node, group, groupIdx }) => {
+  const { groupNames, CellValue } = React.useContext(DateTreeContext);
   const withTotal = ["Total"].concat(groupNames);
   const pre = withTotal.slice(0, groupIdx);
   const post = withTotal.slice(groupIdx + 1);
@@ -100,7 +116,7 @@ const SkippedCols: React.FC<{ readonly groupIdx: number; readonly group?: string
       {pre.map(g => (
         <td key={g}></td>
       ))}
-      <td>{group || "Total"}</td>
+      <td>{group || <CellValue value={node.value.total} />}</td>
       {post.map(g => (
         <td key={g}></td>
       ))}
@@ -117,7 +133,7 @@ const Sum: React.FC<{
 
   return (
     <tr>
-      <SkippedCols group={group} groupIdx={groupIdx} />
+      <SkippedCols node={node} group={group} groupIdx={groupIdx} />
       {head.map(key => {
         const value = node.get(key)?.value ?? node.value.get(key);
 
