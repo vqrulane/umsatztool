@@ -5,14 +5,11 @@ import "./index.css";
 
 import useSWR, { SWRConfig, SWRConfiguration } from "swr";
 import { Store, useStore } from "./store";
-import {
-  TransactionGroup,
-  TransactionGrouping,
-  TransactionParser,
-  transactionGroupingNames,
-} from "./transaction";
-import { TransactionList } from "./transaction/group";
+import { Transaction, TransactionParser } from "./transaction";
 import { Amount } from "./transaction/amount";
+import { DateTree } from "./dateTree";
+import { MulticashDate } from "./multicashDate";
+import { DateGroup, dateGroups, getDateGrouping } from "./dateGroup";
 
 class FileWithKey {
   key: string;
@@ -172,6 +169,15 @@ const Files: React.FC = () => {
   );
 };
 
+const transactionGroupings = {
+  account: (transaction: Transaction) => String(transaction.account),
+  serial: (transaction: Transaction) => transaction.serial || "no serial",
+  text: (transaction: Transaction) => transaction.text || "no text",
+} as const;
+
+type TransactionGrouping = keyof typeof transactionGroupings;
+const transactionGroupingNames = Object.keys(transactionGroupings) as TransactionGrouping[];
+
 const sameGrouping = (x: TransactionGrouping[], y: TransactionGrouping[]) =>
   x.join("") === y.join("");
 
@@ -257,27 +263,62 @@ const GroupingSettings: React.FC = () => {
   return null;
 };
 
+class SelectedDateGroup extends Store<DateGroup> {
+  constructor() {
+    super("week");
+  }
+}
+
+const SelectedDateGroupContext = React.createContext(new SelectedDateGroup());
+const useSelectedDateGroup = () => useStore(React.useContext(SelectedDateGroupContext));
+
+const SelectedDateGroupProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
+  const store = React.useMemo(() => new SelectedDateGroup(), []);
+
+  return (
+    <SelectedDateGroupContext.Provider value={store}>{children}</SelectedDateGroupContext.Provider>
+  );
+};
+
+const DateGroupSelect: React.FC = () => {
+  const [selectedDateGroup, setselectedDateGroup] = useSelectedDateGroup();
+
+  return (
+    <div>
+      {dateGroups.map(g => (
+        <button
+          key={g}
+          type="button"
+          onClick={() => setselectedDateGroup(() => g)}
+          disabled={g === selectedDateGroup}
+        >
+          {g}
+        </button>
+      ))}
+    </div>
+  );
+};
+
 type ParsedFile = {
   file: File;
-  transactions: TransactionGroup | TransactionList;
+  dates: MulticashDate[];
+  transactions: Transaction[];
   errors: Error[];
 };
 
-// eslint-disable-next-line array-bracket-newline
-const parseFile = async ([, file, groupings]: [
-  string,
-  File,
-  TransactionGrouping[]
-]): Promise<ParsedFile> => {
-  const transactions = TransactionGroup.of(groupings);
+const parseFile = async ([, file]: [string, File]): Promise<ParsedFile> => {
+  const transactions = [];
+  const dates = [];
   const parser = new TransactionParser(file.stream());
 
   for await (const transaction of parser) {
-    transactions.append(transaction);
+    transactions.push(transaction);
+    dates.push(transaction.date);
   }
 
   return {
     file,
+    dates,
     transactions,
     errors: parser.errors,
   };
@@ -285,61 +326,33 @@ const parseFile = async ([, file, groupings]: [
 
 const useFile = () => {
   const [file] = useSelectedFile();
-  const [grouping] = useGrouping();
-  const key = file ? ["file::".concat(file.key), file.file, grouping] : null;
+  const key = file ? ["file::".concat(file.key), file.file] : null;
 
   return useSWR<ParsedFile>(key, { fetcher: parseFile });
 };
 
-const Sum: React.FC<{ readonly amount: Amount }> = ({ amount }) => <code> {String(amount)}</code>;
-const blockSpacing = "2em";
-
-const listStyle: React.CSSProperties = {
-  paddingLeft: blockSpacing,
-  listStylePosition: "inside",
-};
-
-const Tree: React.FC<{
-  readonly data: TransactionGroup | TransactionList;
-  readonly group?: React.ReactNode;
-}> = ({ data, group }) => {
-  const groupHeading = (
-    <>
-      <b style={{ lineHeight: group ? blockSpacing : "unset" }}>{group || "Total"}:</b>
-      <Sum amount={new Amount(data.sum)} />
-    </>
-  );
-
-  if (data instanceof TransactionGroup) {
-    return (
-      <ul style={listStyle}>
-        <li>
-          {groupHeading}
-          {Array.from(data.entries()).map(([g, children]) => (
-            <Tree key={g} group={g} data={children} />
-          ))}
-        </li>
-      </ul>
-    );
-  }
-
-  return (
-    <ul style={listStyle}>
-      {groupHeading}
-      {data.map(transaction => (
-        <li key={transaction.code}>
-          {transaction.serial}: <Sum amount={transaction.amount} />
-        </li>
-      ))}
-    </ul>
-  );
-};
+const Sum: React.FC<{ readonly value: number }> = ({ value }) => (
+  <span>{String(new Amount(value))}</span>
+);
 
 const Transactions: React.FC = () => {
   const { data } = useFile();
+  const [grouping] = useGrouping();
+  const [selectedDateGroup] = useSelectedDateGroup();
 
   if (data) {
-    return <Tree data={data.transactions} />;
+    return (
+      <DateTree
+        dates={data.dates}
+        entries={data.transactions}
+        groups={grouping
+          .map(g => transactionGroupings[g])
+          .concat(t => getDateGrouping(t.date, selectedDateGroup))}
+        groupNames={grouping}
+        dateGroup={selectedDateGroup}
+        CellValue={Sum}
+      />
+    );
   }
 
   return null;
@@ -347,16 +360,24 @@ const Transactions: React.FC = () => {
 
 const Errors: React.FC = () => {
   const { data } = useFile();
+  const [open, setOpen] = React.useState(false);
 
   if (data && data.errors.length > 0) {
     return (
-      <ul>
-        {data.errors.map(({ message }, idx) => (
-          <li key={message.concat(String(idx))}>
-            <code>{message}</code>
-          </li>
-        ))}
-      </ul>
+      <>
+        <button type="button" onClick={() => setOpen(!open)}>
+          {data.errors.length} errors
+        </button>
+        <dialog open={open} style={{ position: "relative" }}>
+          <ul>
+            {data.errors.map(({ message }, idx) => (
+              <li key={message.concat(String(idx))}>
+                <code>{message}</code>
+              </li>
+            ))}
+          </ul>
+        </dialog>
+      </>
     );
   }
 
@@ -371,7 +392,7 @@ const Header: React.FC<React.PropsWithChildren> = ({ children }) => (
       flexWrap: "wrap",
       alignItems: "center",
       gap: "1em",
-      padding: blockSpacing,
+      padding: "2em",
     }}
   >
     {children}
@@ -381,9 +402,9 @@ const Header: React.FC<React.PropsWithChildren> = ({ children }) => (
 const Body: React.FC<React.PropsWithChildren> = ({ children }) => (
   <div
     style={{
-      width: "100%",
-      display: "grid",
-      gridTemplateColumns: "3fr 1fr",
+      maxWidth: "100%",
+      overflow: "scroll",
+      margin: "0 2em",
     }}
   >
     {children}
@@ -401,14 +422,17 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <SWRConfig value={swrConfig}>
       <SelectedFileProvider>
         <GroupingProvider>
-          <Header>
-            <Files />
-            <GroupingSettings />
-          </Header>
-          <Body>
-            <Transactions />
-            <Errors />
-          </Body>
+          <SelectedDateGroupProvider>
+            <Header>
+              <Files />
+              <GroupingSettings />
+              <DateGroupSelect />
+              <Errors />
+            </Header>
+            <Body>
+              <Transactions />
+            </Body>
+          </SelectedDateGroupProvider>
         </GroupingProvider>
       </SelectedFileProvider>
     </SWRConfig>

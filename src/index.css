@@ -13,7 +13,21 @@
   -webkit-text-size-adjust: 100%;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   padding: 0;
+}
+
+th {
+  background: SelectedItem;
+  color: SelectedItemText;
+}
+
+td {
+  background: Highlight;
+  color: HighlightText;
 }

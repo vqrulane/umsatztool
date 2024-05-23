@@ -5,6 +5,10 @@ export class Account {
     this.number = accNumber;
   }
 
+  toString() {
+    return `#${this.number}`;
+  }
+
   static parse(str: string) {
     const number = parseInt(str, 10);
 

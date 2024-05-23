@@ -30,8 +30,4 @@ export class MulticashDate extends ShortISO8601Date {
 
     super(year, Number(month) - 1, Number(day));
   }
-
-  get month() {
-    return [this.toLocaleString("default", { month: "long" }), this.getFullYear()].join(" ");
-  }
 }

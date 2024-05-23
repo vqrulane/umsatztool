@@ -1,4 +1,4 @@
-export abstract class FallbackMap<T> extends Map<string, T> {
+export abstract class FallbackMap<T> extends Map<string | number, T> {
   getWithFallback(key: string) {
     let current = this.get(key);
 
