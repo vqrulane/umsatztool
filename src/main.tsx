@@ -332,7 +332,7 @@ const useFile = () => {
 };
 
 const Sum: React.FC<{ readonly value: number }> = ({ value }) => (
-  <span>{String(new Amount(value))}</span>
+  <code>{String(new Amount(value))}</code>
 );
 
 const Transactions: React.FC = () => {

@@ -22,7 +22,7 @@ export class Amount {
 
   /** @todo use locale formatter in accordance with AUSZUG.TXT contents */
   toString() {
-    const sign = this.amount < 0 ? "-" : "";
+    const sign = this.amount < 0 ? "-" : "+";
     const extraZeroes = Number.isInteger(this.amount) ? ".00" : "0";
     const suffixed = String(Math.abs(this.amount)).concat(extraZeroes);
     const [intPart, floatPart] = suffixed.split(".");
