@@ -1,5 +1,3 @@
-import { ShortISO8601Date } from "./shortDate";
-
 class MulticashDateParsingError extends Error {
   constructor(str: string) {
     super(`Couldn't parse date from "${str || ""}"`);
@@ -19,7 +17,7 @@ const parseDateString = (str: string) => {
 };
 
 /** @todo infer millenium from AUSZUG.TXT */
-export class MulticashDate extends ShortISO8601Date {
+export class MulticashDate extends Date {
   constructor(dateString: string) {
     const { day, month, yearString } = parseDateString(dateString);
     const year = parseInt(yearString, 10) + 2000; // see @todo

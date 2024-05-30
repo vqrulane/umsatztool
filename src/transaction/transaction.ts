@@ -1,6 +1,6 @@
 import { Account } from "./account.ts";
 import { Amount } from "./amount.ts";
-import { MulticashDate } from "../multicashDate";
+import { MulticashDate } from "./multicashDate";
 
 export class Transaction {
   account: Account;

@@ -1,6 +1,5 @@
 import React from "react";
 import useSWR from "swr";
-import { MulticashDate } from "./multicashDate";
 import { FallbackMap } from "./fallbackMap";
 import { DateGroup, getDateGrouping } from "./dateGroup";
 
@@ -165,8 +164,10 @@ const DateTreeNode: React.FC<{
   return sum;
 };
 
-const getHead = ([, dates, dateGroup]: [string, MulticashDate[], DateGroup]): string[] => {
-  const sorted = dates.sort();
+const compareDates = (x: Date, y: Date) => Number(x) - Number(y);
+
+const getHead = ([, dates, dateGroup]: [string, Date[], DateGroup]): string[] => {
+  const sorted = [...dates].sort(compareDates);
 
   return sorted.reduce<string[]>((groups, date, idx) => {
     const prev = sorted[idx - 1];
@@ -180,7 +181,7 @@ const getHead = ([, dates, dateGroup]: [string, MulticashDate[], DateGroup]): st
   }, []);
 };
 
-const useHead = (dates: MulticashDate[], dateGroup: DateGroup) =>
+const useHead = (dates: Date[], dateGroup: DateGroup) =>
   useSWR<string[]>(["tree::keys", dates, dateGroup], { fetcher: getHead });
 
 const getRows = <T extends {}>([, entries, groups]: [string, T[], ((x: T) => string)[]]) => {
@@ -209,7 +210,7 @@ export const DateTree = <T extends {}>({
   groups,
   CellValue,
 }: {
-  readonly dates: MulticashDate[];
+  readonly dates: Date[];
   readonly dateGroup: DateGroup;
   readonly entries: T[];
   readonly groupNames: string[];

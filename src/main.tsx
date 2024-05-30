@@ -8,7 +8,6 @@ import { Store, useStore } from "./store";
 import { Transaction, TransactionParser } from "./transaction";
 import { Amount } from "./transaction/amount";
 import { DateTree } from "./dateTree";
-import { MulticashDate } from "./multicashDate";
 import { DateGroup, dateGroups, getDateGrouping } from "./dateGroup";
 
 class FileWithKey {
@@ -301,7 +300,7 @@ const DateGroupSelect: React.FC = () => {
 
 type ParsedFile = {
   file: File;
-  dates: MulticashDate[];
+  dates: Date[];
   transactions: Transaction[];
   errors: Error[];
 };
@@ -332,7 +331,7 @@ const useFile = () => {
 };
 
 const Sum: React.FC<{ readonly value: number }> = ({ value }) => (
-  <code>{String(new Amount(value))}</code>
+  <pre>{String(new Amount(value))}</pre>
 );
 
 const Transactions: React.FC = () => {

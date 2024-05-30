@@ -1,6 +1,6 @@
 import { Account } from "./account";
 import { Amount } from "./amount";
-import { MulticashDate } from "../multicashDate";
+import { MulticashDate } from "./multicashDate";
 import { Transaction } from "./transaction";
 
 /** @link https://bankrec.westpac.com.au/docs/statements/sap-multicash/ */
