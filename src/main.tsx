@@ -6,9 +6,9 @@ import "./index.css";
 import useSWR, { SWRConfig, SWRConfiguration } from "swr";
 import { Store, useStore } from "./store";
 import { Transaction, TransactionParser } from "./transaction";
-import { Amount } from "./transaction/amount";
 import { DateTree } from "./dateTree";
 import { DateGroup, dateGroups, getDateGrouping } from "./dateGroup";
+import { GroupedSum } from "./groupedSum";
 
 class FileWithKey {
   key: string;
@@ -330,9 +330,10 @@ const useFile = () => {
   return useSWR<ParsedFile>(key, { fetcher: parseFile });
 };
 
-const Sum: React.FC<{ readonly value: number }> = ({ value }) => (
-  <pre>{String(new Amount(value))}</pre>
-);
+const AmountCell: React.FC<{ readonly value: GroupedSum; readonly groupedBy?: string }> = ({
+  value,
+  groupedBy,
+}) => <pre>{String(value.getAmountFor(groupedBy))}</pre>;
 
 const Transactions: React.FC = () => {
   const { data } = useFile();
@@ -349,7 +350,9 @@ const Transactions: React.FC = () => {
           .concat(t => getDateGrouping(t.date, selectedDateGroup))}
         groupNames={grouping}
         dateGroup={selectedDateGroup}
-        CellValue={Sum}
+        CellValue={AmountCell}
+        reduce={GroupedSum.reduce}
+        compare={GroupedSum.compare}
       />
     );
   }

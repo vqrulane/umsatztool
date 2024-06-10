@@ -1,5 +1,5 @@
+import currency from "currency.js";
 import { Account } from "./account";
-import { Amount } from "./amount";
 import { MulticashDate } from "./multicashDate";
 import { Transaction } from "./transaction";
 
@@ -28,7 +28,7 @@ const parseLine = (line: string) => {
     const cols = line.split(";");
     const account = Account.parse(cols[MulticashColumn.account]);
     const date = new MulticashDate(cols[MulticashColumn.date]);
-    const amount = Amount.parse(cols[MulticashColumn.amount]);
+    const amount = currency(cols[MulticashColumn.amount]);
     const code = parseInt(cols[MulticashColumn.code], 10);
 
     if (Number.isNaN(code)) {

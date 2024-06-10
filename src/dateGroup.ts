@@ -1,14 +1,14 @@
 import { getWeek } from "date-fns/getWeek";
 
 const week = (date: Date) =>
-  [getWeek(Number(date)), date.toLocaleDateString(navigator.language, { year: "2-digit" })].join(
+  [getWeek(Number(date)), date.toLocaleDateString(navigator.language, { year: "numeric" })].join(
     "."
   );
 
 const month = (date: Date) =>
   date.toLocaleDateString(navigator.language, {
     month: "short",
-    year: "2-digit",
+    year: "numeric",
   });
 
 const dateGroupMap = {
